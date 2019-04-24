@@ -14,7 +14,7 @@ from PySide2 import QtWidgets, QtCore
 # from widget import OptionBox
 import command
 
-nodesDir = os.path.dirname(__file__).replace('\\','/') + '/custom_nodes'
+nodesDir = os.path.dirname(__file__).replace('\\','/') + '/myGraph/custom_nodes'
 
 class MyGraphWindow(QMainWindow):
 
