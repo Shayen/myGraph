@@ -1,9 +1,9 @@
-from NodeGraphQt import NodeGraph, Node
+# from ..NodeGraphQt import NodeGraph, Node
+import Node
 
 from PySide2.QtGui import QFont
-import command
 
-class Integer(Node):
+class Integer(Node.NodeBase):
     """
     An example of a node with a embedded QLineEdit.
     """

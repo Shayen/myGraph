@@ -1,7 +1,6 @@
 from NodeGraphQt import NodeGraph, Node
 
 from PySide2.QtGui import QFont
-import command
 
 class String(Node):
     """

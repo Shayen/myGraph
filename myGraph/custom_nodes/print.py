@@ -1,6 +1,5 @@
 from NodeGraphQt import NodeGraph, Node
 import os
-import command
 
 class Print(Node):
     """
