@@ -10,7 +10,7 @@ class Print(Node):
     __identifier__ = 'python.print'
 
     # set the initial default node name.
-    NODE_NAME = 'Print'
+    NODE_NAME = 'print'
 
     def __init__(self):
         super(Print, self).__init__()

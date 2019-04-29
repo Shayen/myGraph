@@ -1,4 +1,5 @@
 from NodeGraphQt import Node, Port
+from NodeGraphQt import constants
 import new
 import command
 
@@ -6,6 +7,8 @@ PORT_INPUT = 1
 PORT_OUTPUT = 2
 
 class PortBase(object):
+
+    __instance = None  # type: Port
 
     def __init__(self, port, port_type):
         self.__instance = port
@@ -19,7 +22,8 @@ class PortBase(object):
             # return command.getInputValue(self.instance.node())
             p_port = self.instance.connected_ports()[0]
             p_node = p_port.node()
-            input = p_node.get_property(p_port.name())
+            p_port_name = p_port.name()
+            input = p_node.get_property(p_port_name)
             return input
         elif self.port_type == PORT_OUTPUT:
             return self.instance.node().get_property(self.instance.name())
@@ -51,7 +55,7 @@ class NodeBase(Node):
             multi_input (bool): allow port to have more than one connection.
             display_name (bool): display the port name on the node.
 
-        Returns:
+        Returns (PortBase):
             NodeGraphQt.Port: the created port object.
         """
 
@@ -60,7 +64,7 @@ class NodeBase(Node):
         port = PortBase(port, PORT_INPUT)
         return port
 
-    def addOutputPin(self, name='output', multi_output=True, display_name=True, default_value = None):
+    def addOutputPin(self, name='output', multi_output=True, display_name=True, default_value = None, widget_type = constants.NODE_PROP_QLABEL):
         """
         Inherited from Node
         Add output :class:`Port` to node.
@@ -70,14 +74,17 @@ class NodeBase(Node):
             multi_output (bool): allow port to have more than one connection.
             display_name (bool): display the port name on the node.
 
-        Returns:
+        Returns (PortBase):
             NodeGraphQt.Port: the created port object.
         """
 
-        self.create_property(name, default_value)
+        self.create_property(name, default_value, widget_type=widget_type)
 
         port = self.add_output(name = name, multi_output=multi_output, display_name=display_name)
         # port.getData = new.instancemethod(getData, port, None)
         # port.setData = new.instancemethod(setData, port, None)
         port = PortBase(port, PORT_OUTPUT)
         return port
+
+    def execute(self):
+        pass

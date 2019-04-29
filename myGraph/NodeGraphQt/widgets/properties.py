@@ -9,7 +9,6 @@ from NodeGraphQt.constants import (NODE_PROP_QLABEL,
                                    NODE_PROP_QSPINBOX,
                                    NODE_PROP_COLORPICKER,
                                    NODE_PROP_SLIDER)
-from NodeGraphQt.errors import NodePropertyError
 
 
 class BaseProperty(QtWidgets.QWidget):
@@ -165,7 +164,7 @@ class PropLabel(QtWidgets.QLabel):
 
     def set_value(self, value):
         if value != self.get_value():
-            self.setText(value)
+            self.setText(str(value))
             self.value_changed.emit(self.toolTip(), value)
 
 
@@ -185,7 +184,7 @@ class PropLineEdit(QtWidgets.QLineEdit):
 
     def set_value(self, value):
         if value != self.get_value():
-            self.setText(value)
+            self.setText(str(value))
             self.value_changed.emit(self.toolTip(), value)
 
 
@@ -419,6 +418,9 @@ class NodePropWidget(QtWidgets.QWidget):
             for prop_name, value in tab_mapping[tab]:
                 wid_type = model.get_widget_type(prop_name)
                 WidClass = WIDGET_MAP.get(wid_type)
+
+                if not WidClass:
+                    continue
 
                 widget = WidClass()
                 if prop_name in common_props.keys():

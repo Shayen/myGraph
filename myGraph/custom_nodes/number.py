@@ -12,17 +12,17 @@ class Integer(Node.NodeBase):
     __identifier__ = 'constant.math.int'
 
     # initial default node name.
-    NODE_NAME = 'Integer'
+    NODE_NAME = 'integer'
 
     def __init__(self):
         super(Integer, self).__init__()
 
         # create input & output ports
-        self.add_output('value1')
+        self.result = self.addOutputPin('result')
 
         # create QLineEdit text input widget.
-        self.add_text_input('value1', 'Text Input', tab='widgets')
+        self.add_text_input('value1', 'Text Input',text='0', tab='widgets')
 
     def execute(self):
-        pass
+        self.result.setData(int(self.get_property('value1')))
 

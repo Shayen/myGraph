@@ -25,13 +25,16 @@ class MyGraphWindow(QMainWindow):
         self.menubar.addAction('&Files')
         self.menubar.addAction('&Edit')
         self.run_menu = self.menubar.addAction('&Run')
-        mainLayout = QVBoxLayout()
+        mainLayout = QHBoxLayout()
+
+        # main UI
+        splitter1 = QSplitter(Qt.Horizontal)
         self.graph =  NodeGraph()
         # setup_context_menu(self.graph)
         self.viewer = self.graph.viewer()
 
         mainwidget.setLayout(mainLayout)
-        mainLayout.addWidget(self.viewer)
+        splitter1.addWidget(self.viewer)
         self.setCentralWidget(mainwidget)
         self.setMenuBar(self.menubar)
 
@@ -39,19 +42,49 @@ class MyGraphWindow(QMainWindow):
         setup_context_menu(self.graph)
 
         # show the properties bin when a node is "double clicked" in the graph.
-        properties_bin = self.graph.properties_bin()
-        properties_bin.setWindowFlags(QtCore.Qt.Tool)
+        # properties_bin = self.graph.properties_bin()
+        # properties_bin.setWindowFlags(QtCore.Qt.Tool)
 
+        # Add properties bin widget
+        self.properties_bin = self.graph.properties_bin()
+        splitter1.addWidget(self.build_right_sidebar())
+
+        mainLayout.addWidget(splitter1)
+
+        self.registryNodes()
+
+        self.do_connection()
+
+    def do_connection(self):
         # Connection
-        self.run_menu.triggered.connect(self.executeNode)
-
         def show_prop_bin(node):
-            if not properties_bin.isVisible():
-                properties_bin.show()
+            if not self.properties_bin.isVisible():
+                self.properties_bin.show()
 
         self.graph.node_double_clicked.connect(show_prop_bin)
 
-        self.registryNodes()
+        self.run_menu.triggered.connect(self.executeNode)
+        self.run_button.clicked.connect(self.executeNode)
+
+    def build_right_sidebar(self):
+        widget = QWidget()
+        layout = QVBoxLayout()
+
+        button_layout = QHBoxLayout()
+        self.save_button = QPushButton(text = 'Save')
+        self.run_button = QPushButton(text = 'run')
+        # self.run_button.setMinimumHeight(40)
+
+        button_layout.addWidget(self.run_button)
+        button_layout.addWidget(self.save_button)
+        button_layout.setStretchFactor(self.run_button, 1)
+
+        layout.addLayout(button_layout)
+        layout.addWidget(self.properties_bin)
+        layout.setStretchFactor(self.properties_bin, 1)
+
+        widget.setLayout(layout)
+        return widget
 
     def executeNode(self):
         '''

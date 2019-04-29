@@ -31,6 +31,8 @@ def executeNode(node):
         print ('Execute order :',[n.NODE_NAME for n in _executeSequence])
 
         for node in _executeSequence:
+            if not hasattr(node, 'execute'):
+                continue
             node.execute()
 
         return True

@@ -11,7 +11,7 @@ class Plus(Node.NodeBase):
     __identifier__ = 'op.math.math'
 
     # initial default node name.
-    NODE_NAME = 'Plus'
+    NODE_NAME = 'plus'
 
     def __init__(self):
         super(Plus, self).__init__()
@@ -27,7 +27,7 @@ class Plus(Node.NodeBase):
 
         print self.input1.getData(), self.input2.getData()
         sum = int(self.input1.getData()) + int(self.input2.getData())
-        self.result.setData( sum)
+        self.result.setData(sum)
 
         # sum = 0
         # for i,p in enumerate(self.inputs()):
