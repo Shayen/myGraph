@@ -17,7 +17,7 @@ class String(Node.NodeBase):
         super(String, self).__init__()
         # self.set_color(25, 58, 51)
 
-        self.add_text_input(name='value',label='Value', text='0')
+        self.add_text_input(name='value',label='Value', text='text')
 
         # create input and output port.
         self.add_output('value')

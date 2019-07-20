@@ -4,6 +4,7 @@ from collections import defaultdict
 from NodeGraphQt import QtWidgets, QtCore, QtGui
 from NodeGraphQt.constants import (NODE_PROP_QLABEL,
                                    NODE_PROP_QLINEEDIT,
+                                   NODE_PROP_QTEXTEDIT,
                                    NODE_PROP_QCOMBO,
                                    NODE_PROP_QCHECKBOX,
                                    NODE_PROP_QSPINBOX,
@@ -164,7 +165,7 @@ class PropLabel(QtWidgets.QLabel):
 
     def set_value(self, value):
         if value != self.get_value():
-            self.setText(str(value))
+            self.setText(value)
             self.value_changed.emit(self.toolTip(), value)
 
 
@@ -174,17 +175,59 @@ class PropLineEdit(QtWidgets.QLineEdit):
 
     def __init__(self, parent=None):
         super(PropLineEdit, self).__init__(parent)
+        self.__prev_text = ''
         self.returnPressed.connect(self._on_return_pressed)
 
+    def focusInEvent(self, event):
+        super(PropLineEdit, self).focusInEvent(event)
+        self.__prev_text = self.text()
+
+    def focusOutEvent(self, event):
+        super(PropLineEdit, self).focusOutEvent(event)
+        if self.__prev_text != self.text():
+            self.value_changed.emit(self.toolTip(), self.text())
+        self.__prev_text = ''
+
     def _on_return_pressed(self):
-        self.value_changed.emit(self.toolTip(), self.get_value())
+        if self.__prev_text != self.text():
+            self.value_changed.emit(self.toolTip(), self.text())
 
     def get_value(self):
         return self.text()
 
     def set_value(self, value):
         if value != self.get_value():
-            self.setText(str(value))
+            self.setText(value)
+            self.value_changed.emit(self.toolTip(), value)
+
+
+class PropTextEdit(QtWidgets.QTextEdit):
+
+    value_changed = QtCore.Signal(str, object)
+
+    def __init__(self, parent=None):
+        super(PropTextEdit, self).__init__(parent)
+        self.__prev_text = ''
+
+    def focusInEvent(self, event):
+        super(PropTextEdit, self).focusInEvent(event)
+        self.__prev_text = self.toPlainText()
+
+    def focusOutEvent(self, event):
+        super(PropTextEdit, self).focusOutEvent(event)
+        if self.__prev_text != self.toPlainText():
+            self.value_changed.emit(self.toolTip(), self.toPlainText())
+        self.__prev_text = ''
+
+    def _on_return_pressed(self):
+        self.value_changed.emit(self.toolTip(), self.get_value())
+
+    def get_value(self):
+        return self.toPlainText()
+
+    def set_value(self, value):
+        if value != self.get_value():
+            self.setPlainText(value)
             self.value_changed.emit(self.toolTip(), value)
 
 
@@ -260,6 +303,7 @@ class PropSpinBox(QtWidgets.QSpinBox):
 WIDGET_MAP = {
     NODE_PROP_QLABEL:       PropLabel,
     NODE_PROP_QLINEEDIT:    PropLineEdit,
+    NODE_PROP_QTEXTEDIT:    PropTextEdit,
     NODE_PROP_QCOMBO:       PropComboBox,
     NODE_PROP_QCHECKBOX:    PropCheckBox,
     NODE_PROP_QSPINBOX:     PropSpinBox,
@@ -303,8 +347,12 @@ class PropWindow(QtWidgets.QWidget):
         row = self.__layout.rowCount()
         if row > 0:
             row += 1
-        self.__layout.addWidget(QtWidgets.QLabel(label), row, 0,
-                                QtCore.Qt.AlignCenter | QtCore.Qt.AlignRight)
+
+        label_flags = QtCore.Qt.AlignCenter | QtCore.Qt.AlignRight
+        if widget.__class__.__name__ == 'PropTextEdit':
+            label_flags = label_flags | QtCore.Qt.AlignTop
+
+        self.__layout.addWidget(QtWidgets.QLabel(label), row, 0, label_flags)
         self.__layout.addWidget(widget, row, 1)
 
     def get_widget(self, name):
@@ -328,8 +376,8 @@ class NodePropWidget(QtWidgets.QWidget):
     Node properties widget for display a Node object.
 
     Args:
-        parent:
-        node (NodeGraphQt.Node): node.
+        parent (QtWidgets.QWidget): parent object.
+        node (NodeGraphQt.BaseNode): node.
     """
 
     #: signal (node_id, prop_name, prop_value)
@@ -394,7 +442,7 @@ class NodePropWidget(QtWidgets.QWidget):
         Populate widget from a node.
 
         Args:
-            node (NodeGraphQt.Node): node class.
+            node (NodeGraphQt.BaseNode): node class.
         """
         model = node.model
         graph_model = node.graph.model
@@ -417,11 +465,10 @@ class NodePropWidget(QtWidgets.QWidget):
             prop_window = self.__tab_windows[tab]
             for prop_name, value in tab_mapping[tab]:
                 wid_type = model.get_widget_type(prop_name)
-                WidClass = WIDGET_MAP.get(wid_type)
-
-                if not WidClass:
+                if wid_type == 0:
                     continue
 
+                WidClass = WIDGET_MAP.get(wid_type)
                 widget = WidClass()
                 if prop_name in common_props.keys():
                     if 'items' in common_props[prop_name].keys():
@@ -431,7 +478,8 @@ class NodePropWidget(QtWidgets.QWidget):
                         widget.set_min(prop_range[0])
                         widget.set_max(prop_range[1])
 
-                prop_window.add_widget(prop_name, widget, value)
+                prop_window.add_widget(prop_name, widget, value,
+                                       prop_name.replace('_', ' '))
                 widget.value_changed.connect(self._on_property_changed)
 
         # add "Node" tab properties.
@@ -445,7 +493,8 @@ class NodePropWidget(QtWidgets.QWidget):
             widget = WidClass()
             prop_window.add_widget(prop_name,
                                    widget,
-                                   model.get_property(prop_name))
+                                   model.get_property(prop_name),
+                                   prop_name.replace('_', ' '))
 
             widget.value_changed.connect(self._on_property_changed)
 
@@ -511,10 +560,10 @@ class NodePropWidget(QtWidgets.QWidget):
 
 if __name__ == '__main__':
     import sys
-    from NodeGraphQt import Node, NodeGraph
+    from NodeGraphQt import BaseNode, NodeGraph
 
 
-    class TestNode(Node):
+    class TestNode(BaseNode):
 
         NODE_NAME = 'test node'
 
@@ -522,7 +571,7 @@ if __name__ == '__main__':
             super(TestNode, self).__init__()
             self.create_property('label_test', 'foo bar',
                                  widget_type=NODE_PROP_QLABEL)
-            self.create_property('text_edit', 'hello',
+            self.create_property('line_edit', 'hello',
                                  widget_type=NODE_PROP_QLINEEDIT)
             self.create_property('color_picker', (0, 0, 255),
                                  widget_type=NODE_PROP_COLORPICKER)
@@ -534,6 +583,9 @@ if __name__ == '__main__':
             self.create_property('range', 50,
                                  range=(45, 55),
                                  widget_type=NODE_PROP_SLIDER)
+            self.create_property('text_edit', 'test text',
+                                 widget_type=NODE_PROP_QTEXTEDIT,
+                                 tab='text')
 
 
     def prop_changed(node_id, prop_name, prop_value):

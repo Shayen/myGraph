@@ -4,6 +4,7 @@ from NodeGraphQt.base.model import NodeModel
 from NodeGraphQt.base.port import Port
 from NodeGraphQt.constants import (NODE_PROP,
                                    NODE_PROP_QLINEEDIT,
+                                   NODE_PROP_QTEXTEDIT,
                                    NODE_PROP_QCOMBO,
                                    NODE_PROP_QCHECKBOX,
                                    IN_PORT, OUT_PORT)
@@ -29,34 +30,35 @@ class NodeObject(object):
     base class for all node objects.
 
     Args:
-        node (AbstractNodeItem): graphic item used for drawing.
+        qgraphics_item (AbstractNodeItem): graphic item used for drawing.
     """
 
-    #: unique node identifier domain.
+    #: (str) unique node identifier domain.
     __identifier__ = 'nodeGraphQt.nodes'
 
-    #: initial default node name.
+    #: (str) base node name.
     NODE_NAME = None
 
-    def __init__(self, node=None):
-        assert node, 'node cannot be None.'
+    def __init__(self, qgraphics_item=None):
+        assert qgraphics_item, 'qgraphics item cannot be None.'
         self._graph = None
         self._model = NodeModel()
         self._model.type_ = self.type_
         self._model.name = self.NODE_NAME
-        self._view = node
+        self._view = qgraphics_item
         self._view.type_ = self.type_
         self._view.name = self.model.name
         self._view.id = self._model.id
 
     def __repr__(self):
-        return '{}(\'{}\')'.format(self.type_, self.NODE_NAME)
+        return '<{}("{}") object at {}>'.format(
+            self.__class__.__name__, self.NODE_NAME, hex(id(self)))
 
     @classproperty
     def type_(cls):
         """
         Node type identifier followed by the class name.
-        eg. com.chantasticvfx.MyNode
+        eg. nodeGraphQt.nodes.MyNode
 
         Returns:
             str: node type.
@@ -89,16 +91,16 @@ class NodeObject(object):
         Returns the :class:`QtWidgets.QGraphicsItem` used in the scene.
 
         Returns:
-            AbstractNodeItem: node item.
+            NodeGraphQt.qgraphics.node_abstract.AbstractNodeItem: node item.
         """
         return self._view
 
     def set_view(self, item):
         """
-        Sets the graphic item to use for the scene.
+        Sets the qgraphics item to use for the scene.
 
         Args:
-            item (AbstractNodeItem): node view item.
+            item (NodeGraphQt.qgraphics.node_abstract.AbstractNodeItem): node item.
         """
         self._view = item
         self._view.id = self.model.id
@@ -107,14 +109,20 @@ class NodeObject(object):
     @property
     def model(self):
         """
-        Returns the node model.
+        Return the node model.
 
         Returns:
-            NodeModel: node model object.
+            NodeGraphQt.base.model.NodeModel: node model object.
         """
         return self._model
 
     def set_model(self, model):
+        """
+        Set the node model.
+
+        Args:
+            model (NodeGraphQt.base.model.NodeModel): node model object.
+        """
         self._model = model
         self._model.type_ = self.type_
         self._model.id = self.view.id
@@ -226,8 +234,8 @@ class NodeObject(object):
             value (object): data.
             items (list[str]): items used by widget type NODE_PROP_QCOMBO
             range (tuple)): min, max values used by NODE_PROP_SLIDER
-            widget_type (int): widget type flag (not implemented yet).
-            tab (str): name of the widget tab to display in.
+            widget_type (int): widget flag to display in the properties bin.
+            tab (str): name of the widget tab to display in the properties bin.
         """
         self.model.add_property(name, value, items, range, widget_type, tab)
 
@@ -262,6 +270,8 @@ class NodeObject(object):
             name (str): name of the property.
             value (object): property data.
         """
+
+        # prevent signals from causing a infinite loop.
         if self.get_property(name) == value:
             return
 
@@ -351,7 +361,7 @@ class NodeObject(object):
         return self.model.pos
 
 
-class Node(NodeObject):
+class BaseNode(NodeObject):
     """
     base class of a typical Node with input and output ports.
     """
@@ -359,7 +369,7 @@ class Node(NodeObject):
     NODE_NAME = 'Base Node'
 
     def __init__(self):
-        super(Node, self).__init__(NodeItem())
+        super(BaseNode, self).__init__(NodeItem())
         self._inputs = []
         self._outputs = []
 
@@ -447,7 +457,8 @@ class Node(NodeObject):
         widget.value_changed.connect(lambda k, v: self.set_property(k, v))
         self.view.add_widget(widget)
 
-    def add_input(self, name='input', multi_input=False, display_name=True):
+    def add_input(self, name='input', multi_input=False, display_name=True,
+                  color=None):
         """
         Add input :class:`Port` to node.
 
@@ -455,6 +466,7 @@ class Node(NodeObject):
             name (str): name for the input port.
             multi_input (bool): allow port to have more than one connection.
             display_name (bool): display the port name on the node.
+            color (tuple): initial port color (r, g, b) 0-255.
 
         Returns:
             NodeGraphQt.Port: the created port object.
@@ -463,6 +475,9 @@ class Node(NodeObject):
             raise PortRegistrationError(
                 'port name "{}" already registered.'.format(name))
         view = self.view.add_input(name, multi_input, display_name)
+        if color:
+            view.color = color
+            view.border_color = [min([255, max([0, i + 80])]) for i in color]
         port = Port(self, view)
         port.model.type_ = IN_PORT
         port.model.name = name
@@ -472,7 +487,8 @@ class Node(NodeObject):
         self.model.inputs[port.name()] = port.model
         return port
 
-    def add_output(self, name='output', multi_output=True, display_name=True):
+    def add_output(self, name='output', multi_output=True, display_name=True,
+                   color=None):
         """
         Add output :class:`Port` to node.
 
@@ -480,6 +496,7 @@ class Node(NodeObject):
             name (str): name for the output port.
             multi_output (bool): allow port to have more than one connection.
             display_name (bool): display the port name on the node.
+            color (tuple): initial port color (r, g, b) 0-255.
 
         Returns:
             NodeGraphQt.Port: the created port object.
@@ -488,6 +505,9 @@ class Node(NodeObject):
             raise PortRegistrationError(
                 'port name "{}" already registered.'.format(name))
         view = self.view.add_output(name, multi_output, display_name)
+        if color:
+            view.color = color
+            view.border_color = [min([255, max([0, i + 80])]) for i in color]
         port = Port(self, view)
         port.model.type_ = OUT_PORT
         port.model.name = name
@@ -562,7 +582,7 @@ class Node(NodeObject):
         src_port.connect_to(port)
 
 
-class Backdrop(NodeObject):
+class BackdropNode(NodeObject):
     """
     base class of a Backdrop node.
     """
@@ -570,10 +590,11 @@ class Backdrop(NodeObject):
     NODE_NAME = 'Backdrop'
 
     def __init__(self):
-        super(Backdrop, self).__init__(BackdropNodeItem())
+        super(BackdropNode, self).__init__(BackdropNodeItem())
         # override base default color.
         self.model.color = (5, 129, 138, 255)
-        self.create_property('bg_text', '')
+        self.create_property('backdrop_text', '',
+                             widget_type=NODE_PROP_QTEXTEDIT, tab='Backdrop')
 
     def auto_size(self):
         """
@@ -586,7 +607,7 @@ class Backdrop(NodeObject):
         Returns nodes wrapped within the backdrop node.
 
         Returns:
-            list[NodeGraphQt.Node]: list of node under the backdrop.
+            list[NodeGraphQt.BaseNode]: list of node under the backdrop.
         """
         node_ids = [n.id for n in self.view.get_nodes()]
         return [self.graph.get_node_by_id(nid) for nid in node_ids]
@@ -609,22 +630,22 @@ class Backdrop(NodeObject):
         """
         return self.get_property('backdrop_text')
 
-    def set_size(self, size=None):
+    def set_size(self, width, height):
         """
         Sets the backdrop size.
 
         Args:
-            size (tuple): width, height size.
+            width (float): backdrop width size.
+            height (float): backdrop height size.
         """
-        if size:
-            if self.graph:
-                self.graph.begin_undo('backdrop size')
-                self.set_property('width', size[0])
-                self.set_property('height', size[1])
-                self.graph.end_undo()
-                return
-            self.view.width, self.view.height = size
-            self.model.width, self.model.height = size
+        if self.graph:
+            self.graph.begin_undo('backdrop size')
+            self.set_property('width', width)
+            self.set_property('height', height)
+            self.graph.end_undo()
+            return
+        self.view.width, self.view.height = width, height
+        self.model.width, self.model.height = width, height
 
     def size(self):
         """

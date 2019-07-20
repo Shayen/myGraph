@@ -14,14 +14,32 @@ class NodeFactory(object):
 
     @property
     def names(self):
+        """
+        Return all currently registered node type identifiers.
+
+        Returns:
+            dict: key=<node name, value=node_type
+        """
         return self.__names
 
     @property
     def aliases(self):
+        """
+        Return aliases assigned to the node types.
+
+        Returns:
+            dict: key=alias, value=node type
+        """
         return self.__aliases
 
     @property
     def nodes(self):
+        """
+        Return all registered nodes.
+
+        Returns:
+            dict: key=node identifier, value=node class
+        """
         return self.__nodes
 
     def create_node_instance(self, node_type=None, alias=None):
@@ -33,7 +51,7 @@ class NodeFactory(object):
             alias (str): alias name (optional).
 
         Returns:
-            NodeGraphQt.Node: new node class object.
+            NodeGraphQt.BaseNode: new node class object.
         """
         if alias and self.aliases.get(alias):
             node_type = self.aliases[alias]

@@ -50,21 +50,30 @@ class PropertiesList(QtWidgets.QTableWidget):
 
 
 class PropertiesBinWidget(QtWidgets.QWidget):
+    """
+    Node properties bin for displaying properties.
+
+    Args:
+        parent (QtWidgets.QWidget): parent of the new widget.
+        node_graph (NodeGraphQt.NodeGraph): node graph.
+    """
 
     #: Signal emitted (node_id, prop_name, prop_value)
     property_changed = QtCore.Signal(str, str, object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, node_graph=None):
         super(PropertiesBinWidget, self).__init__(parent)
         self.setWindowTitle('Properties Bin')
         self._prop_list = PropertiesList()
         self._limit = QtWidgets.QSpinBox()
-        self._limit.setToolTip('Set node limit to display.')
+        self._limit.setToolTip('Set display nodes limit.')
         self._limit.setMaximum(10)
         self._limit.setMinimum(0)
         self._limit.setValue(5)
         self._limit.valueChanged.connect(self.__on_limit_changed)
         self.resize(400, 400)
+
+        self._block_signal = False
 
         btn_clr = QtWidgets.QPushButton('clear')
         btn_clr.setToolTip('Clear the properties bin.')
@@ -79,6 +88,15 @@ class PropertiesBinWidget(QtWidgets.QWidget):
         layout.addLayout(top_layout)
         layout.addWidget(self._prop_list, 1)
 
+        # wire up node graph.
+        node_graph.add_properties_bin(self)
+        node_graph.node_double_clicked.connect(self.add_node)
+        node_graph.nodes_deleted.connect(self.__on_nodes_deleted)
+        node_graph.property_changed.connect(self.__on_graph_property_changed)
+
+    def __repr__(self):
+        return '<{} object at {}>'.format(self.__class__.__name__, hex(id(self)))
+
     def __on_prop_close(self, node_id):
         items = self._prop_list.findItems(node_id, QtCore.Qt.MatchExactly)
         [self._prop_list.removeRow(i.row()) for i in items]
@@ -87,6 +105,46 @@ class PropertiesBinWidget(QtWidgets.QWidget):
         rows = self._prop_list.rowCount()
         if rows > value:
             self._prop_list.removeRow(rows - 1)
+
+    def __on_nodes_deleted(self, nodes):
+        """
+        Slot function when a node has been deleted.
+
+        Args:
+            nodes (list[str]): list of node ids.
+        """
+        [self.__on_prop_close(n) for n in nodes]
+
+    def __on_graph_property_changed(self, node, prop_name, prop_value):
+        """
+        Slot function that updates the property bin from the node graph signal.
+
+        Args:
+            node (NodeGraphQt.NodeObject):
+            prop_name (str):
+            prop_value (object):
+        """
+        properties_widget = self.prop_widget(node)
+        if not properties_widget:
+            return
+
+        property_window = properties_widget.get_widget(prop_name)
+        if prop_value != property_window.get_value():
+            self._block_signal = True
+            property_window.set_value(prop_value)
+            self._block_signal = False
+
+    def __on_property_widget_changed(self, node_id, prop_name, prop_value):
+        """
+        Slot function triggered when a property widget value has changed.
+
+        Args:
+            node_id (str):
+            prop_name (str):
+            prop_value (object):
+        """
+        if not self._block_signal:
+            self.property_changed.emit(node_id, prop_name, prop_value)
 
     def limit(self):
         """
@@ -97,12 +155,21 @@ class PropertiesBinWidget(QtWidgets.QWidget):
         """
         return int(self._limit.value())
 
+    def set_limit(self, limit):
+        """
+        Set limit of nodes to display.
+
+        Args:
+            limit (int): node limit.
+        """
+        self._limit.setValue(limit)
+
     def add_node(self, node):
         """
         Add node to the properties bin.
 
         Args:
-            node (NodeGraphQt.Node): node object.
+            node (NodeGraphQt.NodeObject): node object.
         """
         if self.limit() == 0:
             return
@@ -117,7 +184,7 @@ class PropertiesBinWidget(QtWidgets.QWidget):
 
         self._prop_list.insertRow(0)
         prop_widget = NodePropWidget(node=node)
-        prop_widget.property_changed.connect(self.property_changed.emit)
+        prop_widget.property_changed.connect(self.__on_property_widget_changed)
         prop_widget.property_closed.connect(self.__on_prop_close)
         self._prop_list.setCellWidget(0, 0, prop_widget)
 
@@ -130,9 +197,10 @@ class PropertiesBinWidget(QtWidgets.QWidget):
         Remove node from the properties bin.
 
         Args:
-            node (NodeGraphQt.Node): node object.
+            node (str or NodeGraphQt.BaseNode): node id or node object.
         """
-        self.__on_prop_close(node.id)
+        node_id = node if isinstance(node, str) else node.id
+        self.__on_prop_close(node_id)
 
     def clear_bin(self):
         """
@@ -145,12 +213,13 @@ class PropertiesBinWidget(QtWidgets.QWidget):
         Returns the node property widget.
 
         Args:
-            node (NodeGraphQt.Node): node object.
+            node (str or NodeGraphQt.NodeObject): node id or node object.
 
         Returns:
             NodePropWidget: node property widget.
         """
-        itm_find = self._prop_list.findItems(node.id, QtCore.Qt.MatchExactly)
+        node_id = node if isinstance(node, str) else node.id
+        itm_find = self._prop_list.findItems(node_id, QtCore.Qt.MatchExactly)
         if itm_find:
             item = itm_find[0]
             return self._prop_list.cellWidget(item.row(), 0)
@@ -158,7 +227,7 @@ class PropertiesBinWidget(QtWidgets.QWidget):
 
 if __name__ == '__main__':
     import sys
-    from NodeGraphQt import Node, NodeGraph
+    from NodeGraphQt import BaseNode, NodeGraph
     from NodeGraphQt.constants import (NODE_PROP_QLABEL,
                                        NODE_PROP_QLINEEDIT,
                                        NODE_PROP_QCOMBO,
@@ -167,7 +236,7 @@ if __name__ == '__main__':
                                        NODE_PROP_SLIDER)
 
 
-    class TestNode(Node):
+    class TestNode(BaseNode):
         NODE_NAME = 'test node'
 
         def __init__(self):

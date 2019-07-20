@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 import os
 
 from NodeGraphQt import QtGui, QtCore, QtWidgets
@@ -6,11 +7,13 @@ from NodeGraphQt.constants import (IN_PORT, OUT_PORT,
                                    PIPE_LAYOUT_CURVED,
                                    PIPE_LAYOUT_STRAIGHT,
                                    PIPE_STYLE_DASHED,
-                                   SCENE_AREA)
+                                   SCENE_AREA,
+                                   Z_VAL_NODE_WIDGET)
 from NodeGraphQt.qgraphics.node_abstract import AbstractNodeItem
 from NodeGraphQt.qgraphics.node_backdrop import BackdropNodeItem
 from NodeGraphQt.qgraphics.pipe import Pipe
 from NodeGraphQt.qgraphics.port import PortItem
+from NodeGraphQt.qgraphics.slicer import SlicerPipe
 from NodeGraphQt.widgets.scene import NodeScene
 from NodeGraphQt.widgets.stylesheet import STYLE_QMENU
 from NodeGraphQt.widgets.tab_search import TabSearchWidget
@@ -29,6 +32,7 @@ class NodeViewer(QtWidgets.QGraphicsView):
 
     moved_nodes = QtCore.Signal(dict)
     search_triggered = QtCore.Signal(str, tuple)
+    connection_sliced = QtCore.Signal(list)
     connection_changed = QtCore.Signal(list, list)
 
     # pass through signals
@@ -62,6 +66,10 @@ class NodeViewer(QtWidgets.QGraphicsView):
         self._rubber_band = QtWidgets.QRubberBand(
             QtWidgets.QRubberBand.Rectangle, self
         )
+        self._pipe_slicer = SlicerPipe()
+        self._pipe_slicer.setVisible(False)
+        self.scene().addItem(self._pipe_slicer)
+
         self._undo_stack = QtWidgets.QUndoStack(self)
         self._context_menu = QtWidgets.QMenu('main', self)
         self._context_menu.setStyleSheet(STYLE_QMENU)
@@ -87,10 +95,10 @@ class NodeViewer(QtWidgets.QGraphicsView):
 
     # --- private ---
 
-    def _set_viewer_zoom(self, value):
+    def _set_viewer_zoom(self, value, sensitivity=0.0):
         if value == 0.0:
             return
-        scale = 0.9 if value < 0.0 else 1.1
+        scale = (0.9 + sensitivity) if value < 0.0 else (1.1 - sensitivity)
         zoom = self.get_zoom()
         if ZOOM_MIN >= zoom:
             if scale == 0.9:
@@ -125,6 +133,12 @@ class NodeViewer(QtWidgets.QGraphicsView):
         pos = self.mapToScene(self._previous_pos)
         self.search_triggered.emit(node_type, (pos.x(), pos.y()))
 
+    def _on_pipes_sliced(self, path):
+        self.connection_sliced.emit([
+            [i.input_port, i.output_port]
+            for i in self.scene().items(path) if isinstance(i, Pipe)
+        ])
+
     # --- reimplemented events ---
 
     def resizeEvent(self, event):
@@ -137,6 +151,7 @@ class NodeViewer(QtWidgets.QGraphicsView):
     def mousePressEvent(self, event):
         alt_modifier = event.modifiers() == QtCore.Qt.AltModifier
         shift_modifier = event.modifiers() == QtCore.Qt.ShiftModifier
+
         if event.button() == QtCore.Qt.LeftButton:
             self.LMB_state = True
         elif event.button() == QtCore.Qt.RightButton:
@@ -151,10 +166,19 @@ class NodeViewer(QtWidgets.QGraphicsView):
         if self._search_widget.isVisible():
             self.tab_search_toggle()
 
+        # cursor pos.
+        map_pos = self.mapToScene(event.pos())
+
+        # pipe slicer enabled.
+        if event.modifiers() == (QtCore.Qt.AltModifier | QtCore.Qt.ShiftModifier):
+            self._pipe_slicer.draw_path(map_pos, map_pos)
+            self._pipe_slicer.setVisible(True)
+            return
+
         if alt_modifier:
             return
 
-        items = self._items_near(self.mapToScene(event.pos()), None, 20, 20)
+        items = self._items_near(map_pos, None, 20, 20)
         nodes = [i for i in items if isinstance(i, AbstractNodeItem)]
 
         # toggle extend node selection.
@@ -187,6 +211,13 @@ class NodeViewer(QtWidgets.QGraphicsView):
         elif event.button() == QtCore.Qt.MiddleButton:
             self.MMB_state = False
 
+        # hide pipe slicer.
+        if self._pipe_slicer.isVisible():
+            self._on_pipes_sliced(self._pipe_slicer.path())
+            p = QtCore.QPointF(0.0, 0.0)
+            self._pipe_slicer.draw_path(p, p)
+            self._pipe_slicer.setVisible(False)
+
         # hide selection marquee
         if self._rubber_band.isVisible():
             rect = self._rubber_band.rect()
@@ -210,10 +241,19 @@ class NodeViewer(QtWidgets.QGraphicsView):
     def mouseMoveEvent(self, event):
         alt_modifier = event.modifiers() == QtCore.Qt.AltModifier
         shift_modifier = event.modifiers() == QtCore.Qt.ShiftModifier
+        if event.modifiers() == (QtCore.Qt.AltModifier | QtCore.Qt.ShiftModifier):
+            if self.LMB_state:
+                p1 = self._pipe_slicer.path().pointAtPercent(0)
+                p2 = self.mapToScene(self._previous_pos)
+                self._pipe_slicer.draw_path(p1, p2)
+                self._previous_pos = event.pos()
+                super(NodeViewer, self).mouseMoveEvent(event)
+                return
+
         if self.MMB_state and alt_modifier:
             pos_x = (event.x() - self._previous_pos.x())
             zoom = 0.1 if pos_x > 0 else -0.1
-            self._set_viewer_zoom(zoom)
+            self._set_viewer_zoom(zoom, 0.05)
         elif self.MMB_state or (self.LMB_state and alt_modifier):
             pos_x = (event.x() - self._previous_pos.x())
             pos_y = (event.y() - self._previous_pos.y())
@@ -282,7 +322,16 @@ class NodeViewer(QtWidgets.QGraphicsView):
             return
         if not self._start_port:
             return
+
         pos = event.scenePos()
+        items = self.scene().items(pos)
+        if items and isinstance(items[0], PortItem):
+            x = items[0].boundingRect().width() / 2
+            y = items[0].boundingRect().height() / 2
+            pos = items[0].scenePos()
+            pos.setX(pos.x() + x)
+            pos.setY(pos.y() + y)
+
         self._live_pipe.draw_path(self._start_port, None, pos)
 
     def sceneMousePressEvent(self, event):
@@ -295,6 +344,10 @@ class NodeViewer(QtWidgets.QGraphicsView):
             event (QtWidgets.QGraphicsScenePressEvent):
                 The event handler from the QtWidgets.QGraphicsScene
         """
+        # pipe slicer enabled.
+        if event.modifiers() == (QtCore.Qt.AltModifier | QtCore.Qt.ShiftModifier):
+            return
+        # viewer pan mode.
         if event.modifiers() == QtCore.Qt.AltModifier:
             return
 
@@ -331,6 +384,7 @@ class NodeViewer(QtWidgets.QGraphicsView):
             pipe = pipe_items[0]
             attr = {IN_PORT: 'output_port', OUT_PORT: 'input_port'}
             from_port = pipe.port_from_pos(pos, True)
+            from_port._hovered = True
 
             self._detached_port = getattr(pipe, attr[from_port.port_type])
             self.start_live_connection(from_port)
@@ -348,6 +402,8 @@ class NodeViewer(QtWidgets.QGraphicsView):
         """
         if not self._live_pipe:
             return
+
+        self._start_port._hovered = False
 
         # find the end port.
         end_port = None
@@ -425,6 +481,7 @@ class NodeViewer(QtWidgets.QGraphicsView):
             return
         self._start_port = selected_port
         self._live_pipe = Pipe()
+        self._live_pipe.setZValue(Z_VAL_NODE_WIDGET)
         self._live_pipe.activate()
         self._live_pipe.style = PIPE_STYLE_DASHED
         if self._start_port.type == IN_PORT:

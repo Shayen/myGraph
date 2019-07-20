@@ -22,7 +22,8 @@ class PortModel(object):
         self.connected_ports = defaultdict(list)
 
     def __repr__(self):
-        return '{}(\'{}\')'.format(self.__class__.__name__, self.name)
+        return '<{}(\'{}\') @ {}>'.format(
+            self.__class__.__name__, self.name, hex(id(self)))
 
     @property
     def to_dict(self):
@@ -281,7 +282,19 @@ class NodeGraphModel(object):
                         }
                     }
         """
-        self.__common_node_props.update(attrs)
+        for node_type in attrs.keys():
+            node_props = attrs[node_type]
+
+            if node_type not in self.__common_node_props.keys():
+                self.__common_node_props[node_type] = node_props
+                continue
+
+            for prop_name, prop_attrs in node_props.items():
+                common_props = self.__common_node_props[node_type]
+                if prop_name not in common_props.keys():
+                    common_props[prop_name] = prop_attrs
+                    continue
+                common_props[prop_name].update(prop_attrs)
 
     def get_node_common_properties(self, node_type):
         """

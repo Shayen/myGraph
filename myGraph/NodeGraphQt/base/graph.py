@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# -*- coding: utf-8 -*-
 import json
 import os
 import re
@@ -13,50 +14,52 @@ from NodeGraphQt.base.menu import Menu
 from NodeGraphQt.base.model import NodeGraphModel
 from NodeGraphQt.base.node import NodeObject
 from NodeGraphQt.base.port import Port
-from NodeGraphQt.widgets.properties_bin import PropertiesBinWidget
+from NodeGraphQt.constants import DRAG_DROP_ID
 from NodeGraphQt.widgets.viewer import NodeViewer
 
 
 class NodeGraph(QtCore.QObject):
     """
     base node graph controller.
-
-    Args:
-        tab_search_key(str): hotkey for the tab search widget (default: "tab").
     """
 
-    #: signal for when a node has been created in the node graph.
+    #: signal emits the node object when a node is created in the node graph.
     node_created = QtCore.Signal(NodeObject)
-    #: signal for when a node is selected.
+    #: signal emits a list of node ids from the deleted nodes.
+    nodes_deleted = QtCore.Signal(list)
+    #: signal emits the node object when selected in the node graph.
     node_selected = QtCore.Signal(NodeObject)
-    #: signal for when a node is double clicked.
+    #: signal triggered when a node is double clicked and emits the node.
     node_double_clicked = QtCore.Signal(NodeObject)
-    #: signal for when a node has been connected.
+    #: signal for when a node has been connected emits (source port, target port).
     port_connected = QtCore.Signal(Port, Port)
-    #: signal for when a node property has changed.
+    #: signal for when a node property has changed emits (node, property name, property value).
     property_changed = QtCore.Signal(NodeObject, str, object)
     #: signal for when drop data has been added to the graph.
     data_dropped = QtCore.Signal(QtCore.QMimeData, QtCore.QPoint)
 
-    def __init__(self, parent=None, tab_search_key='tab'):
+    def __init__(self, parent=None):
         super(NodeGraph, self).__init__(parent)
         self.setObjectName('NodeGraphQt')
         self._model = NodeGraphModel()
         self._viewer = NodeViewer(parent)
         self._node_factory = NodeFactory()
         self._undo_stack = QtWidgets.QUndoStack(self)
-        self._properties_bin = PropertiesBinWidget()
 
         tab = QtWidgets.QAction('Search Nodes', self)
-        tab.setShortcut(tab_search_key)
+        tab.setShortcut('tab')
         tab.triggered.connect(self._toggle_tab_search)
         self._viewer.addAction(tab)
 
         self._wire_signals()
 
+    def __repr__(self):
+        return '<{} object at {}>'.format(self.__class__.__name__, hex(id(self)))
+
     def _wire_signals(self):
         # internal signals.
         self._viewer.search_triggered.connect(self._on_search_triggered)
+        self._viewer.connection_sliced.connect(self._on_connection_sliced)
         self._viewer.connection_changed.connect(self._on_connection_changed)
         self._viewer.moved_nodes.connect(self._on_nodes_moved)
         self._viewer.node_double_clicked.connect(self._on_node_double_clicked)
@@ -65,10 +68,6 @@ class NodeGraph(QtCore.QObject):
         self._viewer.node_selected.connect(self._on_node_selected)
         self._viewer.data_dropped.connect(self._on_node_data_dropped)
 
-        # wire up properties bin widget.
-        self._properties_bin.property_changed.connect(
-            self._on_property_changed)
-
     def _toggle_tab_search(self):
         """
         toggle the tab search widget.
@@ -76,9 +75,9 @@ class NodeGraph(QtCore.QObject):
         self._viewer.tab_search_set_nodes(self._node_factory.names)
         self._viewer.tab_search_toggle()
 
-    def _on_property_changed(self, node_id, prop_name, prop_value):
+    def _on_property_bin_changed(self, node_id, prop_name, prop_value):
         """
-        called when a property widget has changed in the properties bin.
+        called when a property widget has changed in a properties bin.
         (emits the node object, property name, property value)
 
         Args:
@@ -87,8 +86,10 @@ class NodeGraph(QtCore.QObject):
             prop_value (object): python object.
         """
         node = self.get_node_by_id(node_id)
-        node.set_property(prop_name, prop_value)
-        self.property_changed.emit(node, prop_name, prop_value)
+
+        # prevent signals from causing a infinite loop.
+        if node.get_property(prop_name) != prop_value:
+            node.set_property(prop_name, prop_value)
 
     def _on_node_double_clicked(self, node_id):
         """
@@ -99,8 +100,6 @@ class NodeGraph(QtCore.QObject):
             node_id (str): node id emitted by the viewer.
         """
         node = self.get_node_by_id(node_id)
-        self._properties_bin.add_node(node)
-
         self.node_double_clicked.emit(node)
 
     def _on_node_selected(self, node_id):
@@ -122,6 +121,18 @@ class NodeGraph(QtCore.QObject):
             data (QtCore.QMimeData): mime data.
             pos (QtCore.QPoint): scene position relative to the drop.
         """
+
+        # don't emit signal for internal widget drops.
+        if data.hasFormat('text/plain'):
+            if data.text().startswith('<${}>:'.format(DRAG_DROP_ID)):
+                node_ids = data.text()[len('<${}>:'.format(DRAG_DROP_ID)):]
+                x, y = pos.x(), pos.y()
+                for node_id in node_ids.split(','):
+                    self.create_node(node_id, pos=[x, y])
+                x += 20
+                y += 20
+                return
+
         self.data_dropped.emit(data, pos)
 
     def _on_nodes_moved(self, node_data):
@@ -178,6 +189,26 @@ class NodeGraph(QtCore.QObject):
             port1.connect_to(port2)
         self._undo_stack.endMacro()
 
+    def _on_connection_sliced(self, ports):
+        """
+        slot when connection pipes have been sliced.
+
+        Args:
+            ports (list[list[widgets.port.PortItem]]):
+                pair list of port connections (in port, out port)
+        """
+        if not ports:
+            return
+        ptypes = {'in': 'inputs', 'out': 'outputs'}
+        self._undo_stack.beginMacro('slice connections')
+        for p1_view, p2_view in ports:
+            node1 = self._model.nodes[p1_view.node.id]
+            node2 = self._model.nodes[p2_view.node.id]
+            port1 = getattr(node1, ptypes[p1_view.port_type])()[p1_view.name]
+            port2 = getattr(node2, ptypes[p2_view.port_type])()[p2_view.name]
+            port1.disconnect_from(port2)
+        self._undo_stack.endMacro()
+
     @property
     def model(self):
         """
@@ -220,14 +251,63 @@ class NodeGraph(QtCore.QObject):
         """
         return self._viewer.scene()
 
-    def properties_bin(self):
+    def background_color(self):
         """
-        Return the node properties bin widget.
+        Return the node graph background color.
 
         Returns:
-            PropBinWidget: widget.
+            tuple: r, g ,b
         """
-        return self._properties_bin
+        return self.scene().background_color
+
+    def set_background_color(self, r, g, b):
+        """
+        Set node graph background color.
+
+        Args:
+            r (int): red value.
+            g (int): green value.
+            b (int): blue value.
+        """
+        self.scene().background_color = (r, g, b)
+
+    def grid_color(self):
+        """
+        Return the node graph grid color.
+
+        Returns:
+            tuple: r, g ,b
+        """
+        return self.scene().grid_color
+
+    def set_grid_color(self, r, g, b):
+        """
+        Set node graph grid color.
+
+        Args:
+            r (int): red value.
+            g (int): green value.
+            b (int): blue value.
+        """
+        self.scene().grid_color = (r, g, b)
+
+    def display_grid(self, display=True):
+        """
+        Display node graph background grid.
+
+        Args:
+            display: False to not draw the background grid.
+        """
+        self.scene().grid = display
+
+    def add_properties_bin(self, prop_bin):
+        """
+        Wire up a properties bin widget to the node graph.
+
+        Args:
+            prop_bin (NodeGraphQt.PropertiesBinWidget): properties widget.
+        """
+        prop_bin.property_changed.connect(self._on_property_bin_changed)
 
     def undo_stack(self):
         """
@@ -280,12 +360,12 @@ class NodeGraph(QtCore.QObject):
         """
         return self._model.acyclic
 
-    def set_acyclic(self, mode=True):
+    def set_acyclic(self, mode=False):
         """
-        Set the node graph to be acyclic or not. (default=True)
+        Enable the node graph to be a acyclic graph. (default=False)
 
         Args:
-            mode (bool): false to disable acyclic.
+            mode (bool): true to enable acyclic.
         """
         self._model.acyclic = mode
         self._viewer.acyclic = mode
@@ -339,7 +419,7 @@ class NodeGraph(QtCore.QObject):
         Center the node graph on the given nodes or all nodes by default.
 
         Args:
-            nodes (list[NodeGraphQt.Node]): a list of nodes.
+            nodes (list[NodeGraphQt.BaseNode]): a list of nodes.
         """
         self._viewer.center_selection(nodes)
 
@@ -387,7 +467,7 @@ class NodeGraph(QtCore.QObject):
             pos (list[int, int]): initial x, y position for the node (default: (0, 0)).
 
         Returns:
-            NodeGraphQt.Node: the created instance of the node.
+            NodeGraphQt.BaseNode: the created instance of the node.
         """
         NodeCls = self._node_factory.create_node_instance(node_type)
         if NodeCls:
@@ -438,7 +518,7 @@ class NodeGraph(QtCore.QObject):
         Add a node into the node graph.
 
         Args:
-            node (NodeGraphQt.Node): node object.
+            node (NodeGraphQt.BaseNode): node object.
             pos (list[float]): node x,y position. (optional)
         """
         assert isinstance(node, NodeObject), 'node must be a Node instance.'
@@ -466,10 +546,11 @@ class NodeGraph(QtCore.QObject):
         Remove the node from the node graph.
 
         Args:
-            node (NodeGraphQt.Node): node object.
+            node (NodeGraphQt.BaseNode): node object.
         """
         assert isinstance(node, NodeObject), \
             'node must be a instance of a NodeObject.'
+        self.nodes_deleted.emit([node.id])
         self._undo_stack.push(NodeRemovedCmd(self, node))
 
     def delete_nodes(self, nodes):
@@ -477,10 +558,11 @@ class NodeGraph(QtCore.QObject):
         Remove a list of specified nodes from the node graph.
 
         Args:
-            nodes (list[NodeGraphQt.Node]): list of node instances.
+            nodes (list[NodeGraphQt.BaseNode]): list of node instances.
         """
+        self.nodes_deleted.emit([n.id for n in nodes])
         self._undo_stack.beginMacro('delete nodes')
-        [self.delete_node(n) for n in nodes]
+        [self._undo_stack.push(NodeRemovedCmd(self, n)) for n in nodes]
         self._undo_stack.endMacro()
 
     def all_nodes(self):
@@ -488,7 +570,7 @@ class NodeGraph(QtCore.QObject):
         Return all nodes in the node graph.
 
         Returns:
-            list[NodeGraphQt.Node]: list of nodes.
+            list[NodeGraphQt.BaseNode]: list of nodes.
         """
         return list(self._model.nodes.values())
 
@@ -497,7 +579,7 @@ class NodeGraph(QtCore.QObject):
         Return all selected nodes that are in the node graph.
 
         Returns:
-            list[NodeGraphQt.Node]: list of nodes.
+            list[NodeGraphQt.BaseNode]: list of nodes.
         """
         nodes = []
         for item in self._viewer.selected_nodes():
@@ -753,7 +835,7 @@ class NodeGraph(QtCore.QObject):
         Copy nodes to the clipboard.
 
         Args:
-            nodes (list[NodeGraphQt.Node]): list of nodes (default: selected nodes).
+            nodes (list[NodeGraphQt.BaseNode]): list of nodes (default: selected nodes).
         """
         nodes = nodes or self.selected_nodes()
         if not nodes:
@@ -787,9 +869,9 @@ class NodeGraph(QtCore.QObject):
         Create duplicate copy from the list of nodes.
 
         Args:
-            nodes (list[NodeGraphQt.Node]): list of nodes.
+            nodes (list[NodeGraphQt.BaseNode]): list of nodes.
         Returns:
-            list[NodeGraphQt.Node]: list of duplicated node instances.
+            list[NodeGraphQt.BaseNode]: list of duplicated node instances.
         """
         if not nodes:
             return
@@ -815,7 +897,7 @@ class NodeGraph(QtCore.QObject):
         see: :meth:`NodeObject.set_disabled`
 
         Args:
-            nodes (list[NodeGraphQt.Node]): list of node instances.
+            nodes (list[NodeGraphQt.BaseNode]): list of node instances.
             mode (bool): (optional) disable state of the nodes.
         """
         if not nodes:
