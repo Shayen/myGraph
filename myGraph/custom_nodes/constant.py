@@ -1,15 +1,13 @@
 # from ..NodeGraphQt import NodeGraph, Node
 import Node
 
-from PySide2.QtGui import QFont
-
 class Integer(Node.NodeBase):
     """
     An example of a node with a embedded QLineEdit.
     """
 
     # unique node identifier.
-    __identifier__ = 'constant.math.int'
+    __identifier__ = 'constant'
 
     # initial default node name.
     NODE_NAME = 'integer'
@@ -26,3 +24,22 @@ class Integer(Node.NodeBase):
     def execute(self):
         self.result.setData(int(self.get_property('value1')))
 
+class String(Node.NodeBase):
+    """
+    example test node.
+    """
+
+    # set a unique node identifier.
+    __identifier__ = 'constant'
+
+    # set the initial default node name.
+    NODE_NAME = 'text'
+
+    def __init__(self):
+        super(String, self).__init__()
+        # self.set_color(25, 58, 51)
+
+        self.add_text_input(name='value',label='Value', text='text')
+
+        # create input and output port.
+        self.add_output('value')

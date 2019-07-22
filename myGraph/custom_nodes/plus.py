@@ -8,7 +8,7 @@ class Plus(Node.NodeBase):
     """
 
     # unique node identifier.
-    __identifier__ = 'op.math.math'
+    __identifier__ = 'op.math'
 
     # initial default node name.
     NODE_NAME = 'plus'

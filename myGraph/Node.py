@@ -1,4 +1,4 @@
-from NodeGraphQt import Node, Port
+from NodeGraphQt import BaseNode, Port
 from NodeGraphQt import constants
 import new
 import command
@@ -43,7 +43,7 @@ class PortBase(object):
     def get_instance(self):
         return self.instance
 
-class NodeBase(Node):
+class NodeBase(BaseNode):
 
     def addInputPin(self, name='input', multi_input=False, display_name=True):
         """

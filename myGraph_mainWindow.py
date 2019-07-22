@@ -6,54 +6,79 @@ import imp
 import inspect
 import traceback
 
-from NodeGraphQt import NodeGraph, Node, Backdrop, setup_context_menu
+from NodeGraphQt import BaseNode, BackdropNode, setup_context_menu, PropertiesBinWidget, NodeTreeWidget
+from graph import NodeGraph
 from PySide2.QtWidgets import *
 from PySide2.QtCore import *
-from PySide2 import QtWidgets, QtCore
+
+import qdarkstyle
 
 # from widget import OptionBox
 import command
+import widgets
 
 nodesDir = os.path.dirname(__file__).replace('\\','/') + '/myGraph/custom_nodes'
+
+class EmittingStream(QObject):
+    textWritten = Signal(str)
+    def write(self, text):
+        self.textWritten.emit(str(text))
 
 class MyGraphWindow(QMainWindow):
 
     def __init__(self, parent = None):
         super(MyGraphWindow, self).__init__(parent)
         mainwidget = QWidget(self)
+        self.setWindowTitle("MyGraph 1.0Alpha")
+
+        # Build menu
         self.menubar = QMenuBar(self)
-        self.menubar.addAction('&Files')
+        file_menu = QMenu("&File")
+        open_action = QAction("&Open", self,  shortcut="Ctrl+O", triggered=self.open_session)
+        file_menu.addAction(open_action)
+        self.menubar.addMenu(file_menu)
         self.menubar.addAction('&Edit')
+        self.view_menu = QMenu('&View')
+        self.menubar.addMenu(self.view_menu)
+        self.panel_submenu = QMenu("&Panels")
+        self.view_menu.addMenu(self.panel_submenu)
         self.run_menu = self.menubar.addAction('&Run')
         mainLayout = QHBoxLayout()
 
         # main UI
-        splitter1 = QSplitter(Qt.Horizontal)
         self.graph =  NodeGraph()
-        # setup_context_menu(self.graph)
         self.viewer = self.graph.viewer()
 
         mainwidget.setLayout(mainLayout)
-        splitter1.addWidget(self.viewer)
+        mainLayout.addWidget(self.viewer)
         self.setCentralWidget(mainwidget)
         self.setMenuBar(self.menubar)
 
         # set up default menu and commands.
         setup_context_menu(self.graph)
 
-        # show the properties bin when a node is "double clicked" in the graph.
-        # properties_bin = self.graph.properties_bin()
-        # properties_bin.setWindowFlags(QtCore.Qt.Tool)
-
         # Add properties bin widget
-        self.properties_bin = self.graph.properties_bin()
-        splitter1.addWidget(self.build_right_sidebar())
+        self.properties_bin = PropertiesBinWidget(node_graph=self.graph)
+        self.properties_bin.setWindowFlags(Qt.Tool)
+        side_widget = self.build_right_sidebar()
+        self.add_dockWidget(name="Properties",widget=side_widget, addArea=Qt.RightDockWidgetArea)
 
-        mainLayout.addWidget(splitter1)
+        # Node tree widget
+        self.node_tree = NodeTreeWidget(node_graph=self.graph)
+        self.add_dockWidget(name="Node tree", widget=self.node_tree, addArea=Qt.LeftDockWidgetArea)
+
+        # Connect to console
+        sys.stdout = EmittingStream()
+        sys.stderr = EmittingStream()
+        sys.stdout.textWritten.connect(lambda text: self.console.append(text, isError=False))
+        sys.stderr.textWritten.connect(lambda text: self.console.append(text, isError=True))
+        self.console = widgets.Console()
+        self.add_dockWidget(name="Console", widget=self.console, addArea=Qt.RightDockWidgetArea)
 
         self.registryNodes()
-
         self.do_connection()
+
+        self.node_tree.update()
 
     def do_connection(self):
         # Connection
@@ -61,10 +86,29 @@ class MyGraphWindow(QMainWindow):
             if not self.properties_bin.isVisible():
                 self.properties_bin.show()
 
+        def show_nodes_list(node):
+            if not self.node_tree.isVisible():
+                self.node_tree.update()
+                self.node_tree.show()
+
         self.graph.node_double_clicked.connect(show_prop_bin)
+        self.graph.node_double_clicked.connect(show_nodes_list)
 
         self.run_menu.triggered.connect(self.executeNode)
         self.run_button.clicked.connect(self.executeNode)
+
+    def add_dockWidget(self, name, widget, allowedAreas = None, addArea = None):
+
+        if not allowedAreas:
+            allowedAreas = Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
+        if not addArea:
+            addArea = Qt.LeftDockWidgetArea
+
+        dockWidget = QDockWidget(name, self)
+        dockWidget.setAllowedAreas(allowedAreas)
+        dockWidget.setWidget(widget)
+        self.addDockWidget(addArea, dockWidget)
+        self.panel_submenu.addAction(dockWidget.toggleViewAction())
 
     def build_right_sidebar(self):
         widget = QWidget()
@@ -86,6 +130,20 @@ class MyGraphWindow(QMainWindow):
         widget.setLayout(layout)
         return widget
 
+    def open_session(self):
+        """
+        Prompts a file open dialog to load a session.
+
+        Args:
+            graph (NodeGraphQt.NodeGraph): node graph.
+        """
+        graph = self.graph
+        current = graph.current_session()
+        viewer = graph.viewer()
+        file_path = viewer.load_dialog(current)
+        if file_path:
+            graph.load_session(file_path)
+
     def executeNode(self):
         '''
         Execute selected node
@@ -93,13 +151,23 @@ class MyGraphWindow(QMainWindow):
         Returns:
         '''
 
-        _selectedNode = self.graph.selected_nodes()
+        _selectedNode = self.graph.selected_nodes() # type: list
         if not _selectedNode :
             QMessageBox.warning(self, 'Warning', "No selected node.")
+            return
         elif len(_selectedNode) > 1 :
             QMessageBox.warning(self, 'Warning', "Cannot execute multiple node.")
+            return
+        else:
+            selected_node = _selectedNode[0]
 
-        command.executeNode(_selectedNode[0])
+        msgBox = QMessageBox.information(self, self.tr("Run"),
+                               "You want to run selected node?.\n>> %s"%selected_node.NODE_NAME,
+                               QMessageBox.Yes | QMessageBox.Cancel,
+                               QMessageBox.Yes)
+
+        if msgBox == QMessageBox.Yes:
+            command.executeNode(selected_node)
 
     def registryNodes(self):
 
@@ -121,19 +189,22 @@ class MyGraphWindow(QMainWindow):
 
                 for name, obj in inspect.getmembers(sys.modules[__modulename]):
                     if inspect.isclass(obj):
-                        if issubclass(obj, Node) and obj != Node:
+                        if issubclass(obj, BaseNode) and obj != BaseNode:
                             self.graph.register_node(obj)
 
         except Exception as e:
             print traceback.format_exc(e)
             print(e)
 
-        self.graph.register_node(Backdrop)
+        self.graph.register_node(BackdropNode)
 
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     win = MyGraphWindow()
+    app.setStyleSheet(qdarkstyle.load_stylesheet())
+    with open(qdarkstyle.QSS_FILEPATH, 'r') as reader:
+        app.setStyleSheet(reader.read())
     win.show()
     app.exec_()

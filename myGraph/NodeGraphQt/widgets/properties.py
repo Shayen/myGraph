@@ -165,7 +165,7 @@ class PropLabel(QtWidgets.QLabel):
 
     def set_value(self, value):
         if value != self.get_value():
-            self.setText(value)
+            self.setText(unicode(value))
             self.value_changed.emit(self.toolTip(), value)
 
 

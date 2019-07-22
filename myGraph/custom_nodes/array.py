@@ -6,7 +6,7 @@ class List(Node.NodeBase):
     """
 
     # unique node identifier.
-    __identifier__ = 'com.list'
+    __identifier__ = 'com.array'
 
     # initial default node name.
     NODE_NAME = 'list'
@@ -33,7 +33,7 @@ class List_selection(Node.NodeBase):
     """
 
     # unique node identifier.
-    __identifier__ = 'com.list.selection'
+    __identifier__ = 'com.array'
 
     # initial default node name.
     NODE_NAME = 'list selection'
@@ -53,7 +53,7 @@ class List_selection(Node.NodeBase):
 class List_append(Node.NodeBase):
 
     # unique node identifier.
-    __identifier__ = 'com.list.append'
+    __identifier__ = 'com.array'
 
     # initial default node name.
     NODE_NAME = 'append list'
@@ -72,7 +72,7 @@ class List_append(Node.NodeBase):
 
 class List_sort(Node.NodeBase):
     # unique node identifier.
-    __identifier__ = 'com.list.sort'
+    __identifier__ = 'com.array'
 
     # initial default node name.
     NODE_NAME = 'sort list'

@@ -1,26 +1,34 @@
 # from NodeGraphQt import NodeGraph, Node
+import os
 import Node
-from PySide2.QtGui import QFont
 
-class String(Node.NodeBase):
+class Print(Node.NodeBase):
     """
     example test node.
     """
 
     # set a unique node identifier.
-    __identifier__ = 'com.text'
+    __identifier__ = 'python.utils'
 
     # set the initial default node name.
-    NODE_NAME = 'text'
+    NODE_NAME = 'print'
 
     def __init__(self):
-        super(String, self).__init__()
-        # self.set_color(25, 58, 51)
-
-        self.add_text_input(name='value',label='Value', text='text')
+        super(Print, self).__init__()
+        self.set_color(25, 58, 51)
+        self.set_icon(os.path.realpath(os.path.join(os.path.dirname(__file__), '../icons/python.png')))
 
         # create input and output port.
-        self.add_output('value')
+        self.add_input('Input')
+
+    def execute(self):
+
+        p_port = self.input(0).connected_ports()[0]
+        p_node = p_port.node()
+        # print 'Port name :', p_port.model.name
+        input = p_node.get_property(p_port.model.name)
+
+        print '>>', input
 
 class Split_text(Node.NodeBase):
     """
@@ -28,7 +36,7 @@ class Split_text(Node.NodeBase):
     """
 
     # set a unique node identifier.
-    __identifier__ = 'com.text.split'
+    __identifier__ = 'python.utils'
 
     # set the initial default node name.
     NODE_NAME = 'split text'

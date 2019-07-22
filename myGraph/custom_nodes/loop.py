@@ -16,9 +16,9 @@ class Loop_for(Node.NodeBase):
 
         # create input & output ports
         self.input_list = self.addInputPin('list_input', multi_input=True)
-        self.start_knob = self.addOutputPin('start', default_value=None)
-        self.end_knob = self.addOutputPin('end', default_value=None)
-        self.next_node = self.addOutputPin('next', default_value=None)
+        # self.start_knob = self.addOutputPin('start', default_value=None)
+        self.end_knob = self.addOutputPin('d', default_value=None)
+        self.next_node = self.addOutputPin('on_end', default_value=None)
 
     def execute(self):
         # node.input(0).connected_ports()[0].node().get_property(node.input(0).connected_ports()[0].name())

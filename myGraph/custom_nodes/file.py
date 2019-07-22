@@ -8,7 +8,7 @@ class Read(Node.NodeBase):
     """
 
     # unique node identifier.
-    __identifier__ = 'com.open.read'
+    __identifier__ = 'com.file'
 
     # initial default node name.
     NODE_NAME = 'read file'
@@ -34,7 +34,7 @@ class Write(Node.NodeBase):
     """
 
     # unique node identifier.
-    __identifier__ = 'com.open.write'
+    __identifier__ = 'com.file'
 
     # initial default node name.
     NODE_NAME = 'write file'
@@ -56,7 +56,7 @@ class Write(Node.NodeBase):
 
 class Append(Write):
     # unique node identifier.
-    __identifier__ = 'com.open.append'
+    __identifier__ = 'com.file'
 
     # initial default node name.
     NODE_NAME = 'write file (append)'
